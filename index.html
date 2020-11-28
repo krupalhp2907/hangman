@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <link rel="stylesheet" href="styles/index.css" />
+    <title>Hangman</title>  
+</head>
+
+<body>
+    <input type="hidden" name="game_status" value="playing" id="game_status" NS-test="game-status" />
+    <h1>Hangman</h1>
+    <p>Find the hidden word - Enter a letter</p>
+    <div class=" game-container">
+
+       <svg height="200" width="300" id="hangman" xmlns="http://www.w3.org/2000/svg" version="1.1"></svg>
+
+
+        <div class="wrong-letters-container">
+            <div id="wrong-letters"></div>
+        </div>
+
+        <div class="word" id="word"></div>
+    </div>
+
+    <!-- Container for final message -->
+    <div class="popup-container" id="popup-container">
+        <div class="popup">
+            <h2 id="final-message"></h2>
+            <h3 id="final-message-reveal-word"></h3>
+            <button id="play-button" NS-test="play-button">Play Again</button>
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div class="notification-container" id="notification-container">
+        <p>You have already entered this letter</p>
+    </div>
+
+    <script>
+        /**
+         * 
+         * UTILS.js FILES 
+         * 
+        */
+        function customJsInterface(object, virtual) {
+            virtual.forEach(method => {
+                try {
+                    let func = object[virtual];
+                } catch (error) {
+                    throw Error("cannot instantiate object without " + method + " method");
+                }
+            });
+        }
+
+        function remove_character(str, char_pos) {
+            part1 = str.substring(0, char_pos);
+            part2 = str.substring(char_pos + 1, str.length);
+            return (part1 + part2);
+        }
+
+        function count_letter(str, letter) {
+            let count = 0;
+            for (let i = 0; i < str.length; i++) {
+                if (str[i] == letter) {
+                    count += 1;
+                }
+            }
+            return count;
+        }
+
+        function nextGame(num, total) {
+            return num % total;
+        }
+        /**
+         * 
+         * HANGMAN.js FILES 
+         * 
+        */
+        class Hangman {
+            constructor(opts) {
+                this.startX = opts.startX;
+                this.startY = opts.startY;
+                // Canvas
+                if (!opts.canvas) throw Error("Canvas Element is required");
+                this.canvas = opts.canvas;
+                // Canvas Element
+                if (!opts.canvas) throw Error("Context Element is required");
+                this.ctx = opts.ctx;
+
+                // Canvas Dimensions
+                this.canvasX = this.canvas.width || 300;
+                this.canvasY = this.canvas.height || 200;
+                // Count for GAME OVER
+                this.count = 0;
+                // Starting position of cursor
+                this.currX = opts.startX || this.canvasX * 0.02;
+                this.currY = opts.startY || this.canvasY * 0.95; // this.canvasY - 10
+
+                // Length of Base Line or Bottom Support
+                this.baseLineWidth = opts.baseLineWidth || (this.canvasX - this.currX) * 0.4; // 100
+                // Left Most Pillar Height
+                this.leftPillarHeight = opts.leftPillarHeight || this.currY * 0.96; // 160
+                // The gap between the end and beginning
+                this.horizontalPoleGap = opts.horizontalPoleGap || this.leftPillarHeight * 0.07; // 10
+                // Upper Horizontal pole Lenght
+                this.horizontalPoleLength = opts.horizontalPoleLength || (this.canvasX - this.currX) * 0.4; // 125
+                // Radius of Head
+                this.headRadius = opts.headRadius || this.leftPillarHeight * 0.13; // 20
+                // Height of Torso
+                this.torsoHeight = opts.torsoHeight || this.headRadius * 2.34; // 50
+                // The percentage of torso where hands should start defaulf 25% height of torso
+                this.handStartAtRelativeToTorso = opts.handStartAtRelativeToTorso || this.torsoHeight * 0.25;
+                // Size of hand default 75% of torso
+                this.handSize = opts.handSize || this.torsoHeight * 0.75;
+                // Angle W.R.T torso
+                this.handAngle = opts.handAngle || 60;
+                // Size of legs
+                this.legSize = opts.legSize || this.torsoHeight * 0.75;
+                // Angle WRT to torso line
+                this.legAngle = opts.legAngle || 45;
+                // This is the particular sequence to follow to make torso donot change this sequence
+                this.sequence = [
+                    this.__head,
+                    this.__torso,
+                    this.__leftHand,
+                    this.__rightHand,
+                    this.__leftLeg,
+                    this.__rightLeg
+                ]
+                // Incorrect answers to complete game
+                this.MAX = this.sequence.length;
+
+                // Initialise Hangmans 
+                this.__baseLine(),
+                    // Comment this section so that only first section fails
+                    this.__leftPillar(),
+                    this.__horizontalPole(),
+                    this.__rightPillar();
+            }
+
+            static __virtual_methods() {
+                return ['__update_GUI_Circle', '__update_GUI_Line'];
+            }
+
+            __baseLine() {
+                let { currX, currY, baseLineWidth } = this;
+
+                let iniX = currX,
+                    iniY = currY;
+
+                let nextX = iniX + baseLineWidth,
+                    nextY = iniY;
+
+                this.__update_GUI_Line({
+                    iniX, iniY,
+                    nextX, nextY
+                });
+
+                this.currX = nextX, this.currY = nextY;
+            }
+
+            __leftPillar() {
+                let { currX, currY, baseLineWidth, leftPillarHeight } = this;
+
+                let iniX = (currX + (currX - baseLineWidth)) / 2,
+                    iniY = currY;
+
+                let nextX = iniX,
+                    nextY = iniY - leftPillarHeight;
+
+                this.__update_GUI_Line({
+                    iniX, iniY,
+                    nextX, nextY
+                });
+
+                this.currX = nextX, this.currY = nextY;
+            }
+
+            __horizontalPole() {
+                let { currX, currY, ctx, horizontalPoleLength, horizontalPoleGap } = this;
+
+                let iniX = currX - horizontalPoleGap,
+                    iniY = currY + horizontalPoleGap;
+
+                let nextX = iniX + horizontalPoleLength,
+                    nextY = iniY;
+
+                this.__update_GUI_Line({
+                    iniX, iniY,
+                    nextX, nextY
+                });
+
+                this.currX = nextX, this.currY = nextY;
+
+            }
+
+            __rightPillar() {
+                let { currX, currY, horizontalPoleGap } = this;
+
+                let iniX = currX - horizontalPoleGap * 2,
+                    iniY = currY;
+
+                let nextX = iniX,
+                    nextY = currY + 10;
+
+                this.__update_GUI_Line({
+                    iniX, iniY,
+                    nextX, nextY
+                });
+
+                this.currX = nextX, this.currY = nextY;
+
+            }
+
+            __head() {
+                let { currX, currY, headRadius } = this;
+
+                let iniX = currX,
+                    iniY = currY;
+
+                let nextX = iniX,
+                    nextY = currY + 2 * headRadius;
+
+                this.__update_GUI_Circle({
+                    iniX, iniY, radius: headRadius
+                })
+
+                this.currX = nextX, this.currY = nextY;
+            }
+
+            __torso() {
+                let { currX, currY, ctx, torsoHeight } = this;
+
+                let iniX = currX,
+                    iniY = currY;
+
+                let nextX = iniX,
+                    nextY = currY + torsoHeight;
+
+                this.__update_GUI_Line({
+                    iniX, iniY,
+                    nextX, nextY
+                });
+
+                this.currX = nextX, this.currY = nextY;
+            }
+
+            __leftHand() {
+                let { currX, currY, ctx, handStartAtRelativeToTorso, handSize, handAngle, torsoHeight } = this;
+
+                let iniX = currX,
+                    iniY = currY - torsoHeight + handStartAtRelativeToTorso;
+
+                let nextX = iniX - handSize * Math.sin(Math.PI * handAngle / 180.0),
+                    nextY = iniY + handSize * Math.cos(Math.PI * handAngle / 180.0);
+
+
+                this.__update_GUI_Line({
+                    iniX, iniY,
+                    nextX, nextY
+                });
+
+            }
+
+            __rightHand() {
+                let { currX, currY, ctx, handStartAtRelativeToTorso, handSize, handAngle, torsoHeight } = this;
+
+                let iniX = currX,
+                    iniY = currY - torsoHeight + handStartAtRelativeToTorso;
+
+                let nextX = iniX + handSize * Math.sin(Math.PI * handAngle / 180.0),
+                    nextY = iniY + handSize * Math.cos(Math.PI * handAngle / 180.0);
+
+
+                this.__update_GUI_Line({
+                    iniX, iniY,
+                    nextX, nextY
+                });
+
+            }
+
+            __leftLeg() {
+                let { currX, currY, ctx, legSize, legAngle } = this;
+
+                let iniX = currX,
+                    iniY = currY;
+
+                let nextX = iniX - legSize * Math.sin(Math.PI * legAngle / 180.0),
+                    nextY = iniY + legSize * Math.cos(Math.PI * legAngle / 180.0);
+
+
+                this.__update_GUI_Line({
+                    iniX, iniY,
+                    nextX, nextY
+                });
+            }
+
+            __rightLeg() {
+                let { currX, currY, ctx, legSize, legAngle } = this;
+
+                let iniX = currX,
+                    iniY = currY;
+
+                let nextX = iniX + legSize * Math.sin(Math.PI * legAngle / 180.0),
+                    nextY = iniY + legSize * Math.cos(Math.PI * legAngle / 180.0);
+
+
+                this.__update_GUI_Line({
+                    iniX, iniY,
+                    nextX, nextY
+                });
+            }
+
+            draw() {
+                let { MAX, sequence } = this;
+
+                if (this.count >= MAX) {
+                    return -1;
+                }
+
+                sequence[this.count].call(this);
+                this.count++;
+                return 1;
+            }
+
+            reset() {
+                this.currX = this.startX || this.canvasX * 0.02;
+                this.currY = this.startY || this.canvasY * 0.95; // this.canvasY - 10
+                this.count = 0;
+                this.__baseLine(),
+                    // comment to fail all test cases
+                    this.__leftPillar(),
+                    this.__horizontalPole(),
+                    this.__rightPillar();
+            }
+        }
+
+        /**
+         * 
+         * HANGMAN_SVG.js FILES 
+         * 
+        */
+        class HangmanSvg extends Hangman {
+            constructor(svg) {
+
+                super({
+                    canvas: {
+                        width: svg.getAttribute("width") || 300,
+                        height: svg.getAttribute("height") || 200
+                    },
+                    ctx: svg
+                });
+                customJsInterface(this, Hangman.__virtual_methods() || []);
+            }
+
+            __update_GUI_Line(opts) {
+                let { iniX, iniY, nextX, nextY } = opts;
+                let { currX, currY, ctx } = this;
+
+                var newElement = document.createElementNS("http://www.w3.org/2000/svg", 'line'); //Create a path in SVG's namespace
+                newElement.setAttribute("x1", iniX || currX);
+                newElement.setAttribute("y1", iniY || currY);
+                newElement.setAttribute("x2", nextX);
+                newElement.setAttribute("y2", nextY);
+                newElement.setAttribute("class", "figure-part");
+                newElement.setAttribute("NS-test", "figure-part");
+                ctx.appendChild(newElement);
+            }
+
+            __update_GUI_Circle(opts) {
+                let { iniX, iniY, radius } = opts;
+                let { currX, currY, ctx } = this;
+
+                var newElement = document.createElementNS("http://www.w3.org/2000/svg", 'circle'); //Create a path in SVG's namespace
+                newElement.setAttribute("cx", iniX || currX);
+                newElement.setAttribute("cy", (iniY + radius) || currY);
+                newElement.setAttribute("r", radius);
+                newElement.setAttribute("class", "figure-part");
+                newElement.setAttribute("NS-test", "figure-part");
+                ctx.appendChild(newElement);
+            }
+        }
+
+        /*
+
+            GAME.js
+
+        */
+        const wordEl = document.getElementById('word');
+        const wrongLettersEl = document.getElementById('wrong-letters');
+        const playAgainBtn = document.getElementById('play-button');
+        const popup = document.getElementById('popup-container');
+        const notification = document.getElementById('notification-container');
+        const finalMessage = document.getElementById('final-message');
+        const finalMessageRevealWord = document.getElementById('final-message-reveal-word');
+        const gameStatusEl = document.getElementById("game_status");
+
+        gameStatusEl.value = "playing";
+
+        const hangmanEl = document.getElementById("hangman");
+        var hangman = new HangmanSvg(hangmanEl);
+
+
+        // Use these words for your application
+        const words = ['application', 'programming', 'interface', 'wizard', 'frizar'];
+        var COUNT = 0;
+        var total = words.length;
+
+        let selectedWord = words[nextGame(COUNT, total)];
+
+        let playable = true;
+
+        const correctLetters = [];
+        const wrongLetters = [];
+
+        // Show hidden word
+        function displayWord() {
+            wordEl.innerHTML = `
+            ${selectedWord
+                    .split('')
+                    .map(
+                        letter => `
+                <span class="letter" NS-test="letter">
+                    ${correctLetters.includes(letter) ? letter : ''}
+                </span>
+                `
+                    )
+                    .join('')}
+        `;
+
+            const innerWord = wordEl.innerText.replace(/[ \n]/g, '');
+
+            if (innerWord === selectedWord) {
+                finalMessage.innerText = 'Congratulations! You won! 😃';
+                popup.style.display = 'flex';
+                gameStatusEl.value = "win";
+
+                playable = false;
+            }
+        }
+
+        // Update the wrong letters
+        function updateWrongLettersEl() {
+            // Display wrong letters
+            wrongLettersEl.innerHTML = `
+            ${wrongLetters.length > 0 ? '<p>Wrong</p>' : ''}
+            ${wrongLetters.map(letter => `<span class="wrong-letter" NS-test="wrong-letter">${letter}</span>`)}
+        `;
+
+            let parts = hangman.draw();
+
+            // Check if lost
+            if (parts < 0) {
+                finalMessage.innerText = 'Unfortunately you lost. 😕';
+                finalMessageRevealWord.innerText = `...the word was: ${selectedWord}`;
+                popup.style.display = 'flex';
+                gameStatusEl.value = "lose";
+                playable = false;
+            }
+        }
+
+        // Show notification
+        function showNotification() {
+            notification.classList.add('show');
+
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 2000);
+        }
+
+        // Keydown letter press
+        window.addEventListener('keydown', e => {
+            if (playable) {
+                if (e.keyCode >= 65 && e.keyCode <= 90) {
+                    const letter = e.key.toLowerCase();
+
+                    if (selectedWord.includes(letter)) {
+                        if (!correctLetters.includes(letter)) {
+                            correctLetters.push(letter);
+
+                            displayWord();
+                        } else {
+                            showNotification();
+                        }
+                    } else {
+                        if (!wrongLetters.includes(letter)) {
+                            wrongLetters.push(letter);
+
+                            updateWrongLettersEl();
+                        } else {
+                            showNotification();
+                        }
+                    }
+                }
+            }
+        });
+
+        // Restart game and play again
+        playAgainBtn.addEventListener('click', () => {
+            playable = true;
+
+            //  Empty arrays
+            correctLetters.splice(0);
+            wrongLetters.splice(0);
+
+            COUNT += 1
+            selectedWord = words[nextGame(COUNT, total)];
+
+
+
+            hangmanEl.innerHTML = "";
+            hangman.reset();
+            displayWord();
+
+            wrongLettersEl.innerHTML = "";
+
+            gameStatusEl.value = "playing";
+
+            popup.style.display = 'none';
+        });
+
+        displayWord();
+
+    </script>
+</body>
+
+</html>
